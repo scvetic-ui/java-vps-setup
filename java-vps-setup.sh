@@ -295,7 +295,7 @@ springboot_setup() {
 
   cat > /etc/systemd/system/app.service <<EOF
 [Unit]
-Description=Java application (Spring Boot)
+Description=Java application
 After=network.target
 
 [Service]
@@ -449,7 +449,8 @@ payara_setup() {
     grep -q "<jvm-options>-Xmx${HEAP_MB}m</jvm-options>" "$dx" \
       || warn "No -Xmx found in domain.xml - set the heap by hand: asadmin create-jvm-options -Xmx${HEAP_MB}m"
     # HTTP and admin listeners on localhost only; the outside world goes through Nginx
-    sed -i -E 's#<network-listener ([^>]*name="http-listener-1")#<network-listener address="127.0.0.1" \1#g; s#<network-listener ([^>]*name="admin-listener")#<network-listener address="127.0.0.1" \1#g' "$dx"
+    # (replace an existing address attribute, or add one: a duplicate attribute breaks the XML)
+    sed -i -E '/<network-listener .*name="(http-listener-1|admin-listener)"/{ s# address="[^"]*"##g; s#<network-listener #<network-listener address="127.0.0.1" #; }' "$dx"
   else
     warn "domain.xml not found (${dx}) - set the heap and listener addresses by hand."
   fi
@@ -482,6 +483,11 @@ EOF
 set -euo pipefail
 [[ $# -eq 1 && -f "$1" ]] || { echo "Usage: deploy-app app.war"; exit 1; }
 install -o payara -g payara -m 640 "$1" /var/lib/payara-deploy/app.war
+# Payara needs a minute after the first start: wait for the admin port (4848), up to 2 minutes
+for _ in $(seq 1 60); do
+  (exec 3<>/dev/tcp/127.0.0.1/4848) 2>/dev/null && break
+  sleep 2
+done
 cd /tmp
 runuser -u payara -- /opt/payara/bin/asadmin deploy --force=true --contextroot / --name app /var/lib/payara-deploy/app.war
 EOF
@@ -675,7 +681,7 @@ EOF
 
 # ---------- 7. Nginx reverse proxy + SSL ----------
 nginx_setup() {
-  log "Nginx reverse proxy na 127.0.0.1:${APP_PORT}"
+  log "Nginx reverse proxy to 127.0.0.1:${APP_PORT}"
   rm -f /etc/nginx/sites-enabled/default
   cat > /etc/nginx/sites-available/java-app <<EOF
 server {
@@ -809,6 +815,6 @@ cat <<EOF
    wildfly:    sudo deploy-app /path/to/app.war      (becomes ROOT.war = the domain root)
    payara:     sudo deploy-app /path/to/app.war      (context root "/")
    docker:     sudo deploy-app registry/image:tag    (private registry: docker login first)
-   SSH:        ssh ${ADMIN_USER:-root}@<IP>  (check in a NEW session before you close the old one)
+   SSH:        ${SSH_PUBKEY:+ssh ${ADMIN_USER}@<IP>  (check in a NEW session before you close the old one)}
 --------------------------------------------------------------
 EOF
