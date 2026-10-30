@@ -815,6 +815,6 @@ cat <<EOF
    wildfly:    sudo deploy-app /path/to/app.war      (becomes ROOT.war = the domain root)
    payara:     sudo deploy-app /path/to/app.war      (context root "/")
    docker:     sudo deploy-app registry/image:tag    (private registry: docker login first)
-   SSH:        ${SSH_PUBKEY:+ssh ${ADMIN_USER}@<IP>  (check in a NEW session before you close the old one)}
---------------------------------------------------------------
+${SSH_PUBKEY:+   SSH:        ssh ${ADMIN_USER}@<IP>  (check in a NEW session before you close the old one)
+}--------------------------------------------------------------
 EOF
